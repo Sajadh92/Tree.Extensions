@@ -1,76 +1,145 @@
 ﻿namespace Tree.Extensions;
 
-public class TreeItem<T>
+public class TreeNode<T>
 {
-    public T Item { get; set; }
-    public List<TreeItem<T>> Children { get; set; } = new();
+    public T Node { get; set; }
+    public List<TreeNode<T>> Children { get; set; } = new();
 }
 
 public static class TreeExtensions
 {
-    public static List<TreeItem<T>> Tree<T, K>(this List<T> collection,
-        Func<T, K> selector, Func<T, K> parent_selector, K? root = default)
+    private static void CheckParams<T, K>(List<T> collection, Func<T, K> selector, Func<T, K> parent_selector)
     {
-        List<TreeItem<T>> tree = new();
-
-        if (root == null)
+        if (collection == null)
         {
-            collection.Where(x => EqualityComparer<K>.Default.Equals(parent_selector(x), root))
-                .ToList().ForEach(x => tree.Add(new() { Item = x }));
-        }
-        else
-        {
-            collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x), root))
-                .ToList().ForEach(x => tree.Add(new() { Item = x }));
+            throw new ArgumentNullException(nameof(collection));
         }
 
-        return Builde(tree, collection, selector, parent_selector).ToList();
+        if (selector == null)
+        {
+            throw new ArgumentNullException(nameof(selector));
+        }
+
+        if (parent_selector == null)
+        {
+            throw new ArgumentNullException(nameof(parent_selector));
+        }
     }
 
-    private static IEnumerable<TreeItem<T>> Builde<T, K>(List<TreeItem<T>> tree,
-        List<T> collection, Func<T, K> selector, Func<T, K> parent_selector)
+    private static IEnumerable<TreeNode<T>> BuildeTree<T, K>(List<TreeNode<T>> tree, List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, bool revers = false, int? depth = default)
     {
-        foreach (TreeItem<T> node in tree)
+        foreach (TreeNode<T> item in tree)
         {
-            List<TreeItem<T>> subtree = new();
-
-            collection.Where(x => EqualityComparer<K>.Default.Equals(parent_selector(x), selector(node.Item)))
-                .ToList().ForEach(x => subtree.Add(new() { Item = x }));
-
-            yield return new TreeItem<T>
+            List<TreeNode<T>> subtree = new();
+            
+            if (revers)
             {
-                Item = node.Item,
-                Children = Builde(subtree, collection, selector, parent_selector).ToList()
+                subtree = collection.GetParentsAsTree(selector, parent_selector, selector(item.Node), 1);
+            }
+            else
+            {
+                subtree = collection.GetChildsAsTree(selector, parent_selector, selector(item.Node), 1);
+            }
+
+            yield return new TreeNode<T>
+            {
+                Node = item.Node,
+                Children = depth != null && depth <= 0 ? new() : BuildeTree(subtree, collection, selector, parent_selector, revers, depth == null ? depth : depth - 1).ToList()
             };
         }
     }
 
-    public static List<T> Parents<T, K>(this List<T> collection,
-        Func<T, K> selector, Func<T, K> parent_selector, K? root = default,
-        int? depth = default)
+    public static List<TreeNode<T>> ToTree<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
     {
+        CheckParams(collection, selector, parent_selector);
+
+        List<TreeNode<T>> tree = new();
+
+        if (depth != null && depth <= 0)
+        {
+            return tree;
+        }
+
+        if (root == null)
+        {
+            tree = collection.GetChildsAsTree(selector, parent_selector, root, 1);
+        }
+        else
+        {
+            tree = collection.GetChildsAsTree(selector, selector, root, 1);
+        }
+
+        return BuildeTree(tree, collection, selector, parent_selector, revers: false, depth == null ? depth : depth - 1).ToList();
+    }
+
+    public static List<TreeNode<T>> ToTreeRevers<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
+    {
+        CheckParams(collection, selector, parent_selector);
+
+        List<TreeNode<T>> tree = new();
+
+        if (depth != null && depth <= 0)
+        {
+            return tree;
+        }
+
+        if (root == null)
+        {
+            tree = collection.GetLeaves(selector, parent_selector).ToTree(selector, parent_selector);
+        }
+        else
+        {
+            collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x), root))
+                .ToList().ForEach(x => tree.Add(new() { Node = x }));
+        }
+
+        return BuildeTree(tree, collection, selector, parent_selector, revers: true, depth == null ? depth : depth - 1).ToList();
+    }
+
+    public static List<T> GetParents<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
+    {
+        CheckParams(collection, selector, parent_selector);
+
         List<T> inner = new();
 
         if (depth != null && depth <= 0)
         {
             return inner;
-        }
+        } 
 
-        foreach (T item in collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x),
+        foreach (T node in collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x),
             parent_selector(collection.First(x => EqualityComparer<K>.Default.Equals(selector(x), root))))))
         {
-            inner.Add(item);
-
-            inner = inner.Union(collection.Parents(selector, parent_selector, selector(item), depth - 1)).ToList();
+            inner.Add(node); inner = inner.Union(collection.GetParents(selector, parent_selector, selector(node), depth == null ? depth : depth - 1)).ToList();
         }
 
         return inner;
     }
 
-    public static List<T> Childs<T, K>(this List<T> collection, 
-        Func<T, K> selector, Func<T, K> parent_selector, K? root = default, 
-        int? depth = default)
+    public static List<TreeNode<T>> GetParentsAsTree<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
     {
+        CheckParams(collection, selector, parent_selector);
+
+        List<T> inner = new();
+
+        if (depth != null && depth <= 0)
+        {
+            return inner.ToTree(selector, parent_selector, root);
+        }
+
+        foreach (T node in collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x),
+            parent_selector(collection.First(x => EqualityComparer<K>.Default.Equals(selector(x), root))))))
+        {
+            inner.Add(node); inner = inner.Union(collection.GetParents(selector, parent_selector, selector(node), depth == null ? depth : depth - 1)).ToList();
+        }
+
+        return inner.ToTree(selector, parent_selector, root); 
+    }
+
+    public static List<T> GetChilds<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
+    {
+        CheckParams(collection, selector, parent_selector);
+
         List<T> inner = new();
 
         if (depth != null && depth <= 0)
@@ -78,51 +147,80 @@ public static class TreeExtensions
             return inner;
         }
 
-        foreach (T item in collection.Where(x => EqualityComparer<K>.Default.Equals(parent_selector(x), root)))
+        foreach (T node in collection.Where(x => EqualityComparer<K>.Default.Equals(parent_selector(x), root)))
         {
-            inner.Add(item);
-
-            inner = inner.Union(collection.Childs(selector, parent_selector, selector(item), depth - 1)).ToList();
+            inner.Add(node); inner = inner.Union(collection.GetChilds(selector, parent_selector, selector(node), depth == null ? depth : depth - 1)).ToList();
         }
 
         return inner;
     }
 
-    public static List<T> Roots<T, K>(this List<T> collection,
-        Func<T, K> selector, Func<T, K> parent_selector, K? root = default)
+    public static List<TreeNode<T>> GetChildsAsTree<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default, int? depth = default)
     {
+        CheckParams(collection, selector, parent_selector);
+
         List<T> inner = new();
 
-        if (collection.Parents(selector, parent_selector, root, 1).Any())
+        if (depth != null && depth <= 0)
         {
-            foreach (T item in collection.Parents(selector, parent_selector, root, 1))
+            return inner.ToTree(selector, parent_selector, root);
+        }
+
+        foreach (T node in collection.Where(x => EqualityComparer<K>.Default.Equals(parent_selector(x), root)))
+        {
+            inner.Add(node); inner = inner.Union(collection.GetChilds(selector, parent_selector, selector(node), depth == null ? depth : depth - 1)).ToList();
+        }
+
+        return inner.ToTree(selector, parent_selector, root);
+    }
+
+    public static List<T> GetRoots<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default)
+    {
+        CheckParams(collection, selector, parent_selector);
+
+        List<T> inner = new();
+
+        if (collection.GetParents(selector, parent_selector, root, 1).Any())
+        {
+            foreach (T node in collection.GetParents(selector, parent_selector, root, 1))
             {
-                inner = inner.Union(collection.Roots(selector, parent_selector, selector(item))).ToList();
+                inner = inner.Union(collection.GetRoots(selector, parent_selector, selector(node))).ToList();
             }
         }
         else
         {
-            inner.AddRange(collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x), root)).ToList());
+            T? node = collection.FirstOrDefault(x => EqualityComparer<K>.Default.Equals(selector(x), root));
+
+            if (node is not null)
+            {
+                inner.Add(node);
+            }
         }
 
         return inner;
     }
 
-    public static List<T> Leaves<T, K>(this List<T> collection,
-        Func<T, K> selector, Func<T, K> parent_selector, K? root = default)
+    public static List<T> GetLeaves<T, K>(this List<T> collection, Func<T, K> selector, Func<T, K> parent_selector, K? root = default)
     {
+        CheckParams(collection, selector, parent_selector);
+
         List<T> inner = new();
 
-        if (collection.Childs(selector, parent_selector, root, 1).Any())
+        if (collection.GetChilds(selector, parent_selector, root, 1).Any())
         {
-            foreach (T item in collection.Childs(selector, parent_selector, root, 1))
+            foreach (T node in collection.GetChilds(selector, parent_selector, root, 1))
             {
-                inner = inner.Union(collection.Leaves(selector, parent_selector, selector(item))).ToList();
+                inner = inner.Union(collection.GetLeaves(selector, parent_selector, selector(node))).ToList();
             }
         }
         else
         {
-            inner.AddRange(collection.Where(x => EqualityComparer<K>.Default.Equals(selector(x), root)).ToList());
+            T? node = collection.FirstOrDefault(x => EqualityComparer<K>.Default.Equals(selector(x), root));
+
+            if (node is not null)
+            {
+                inner.Add(node);
+            }
         }
         
         return inner;

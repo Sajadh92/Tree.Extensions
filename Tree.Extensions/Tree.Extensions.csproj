@@ -8,6 +8,12 @@
     <Company>Paradise</Company>
     <RepositoryType>git</RepositoryType>
     <PackageTags>tree-extension</PackageTags>
+    <RepositoryUrl>https://github.com/Sajadh92/Tree.Extensions</RepositoryUrl>
+    <Version>1.0.0</Version>
+    <PackageId>Tree.Extensions</PackageId>
+    <Product>Tree.Extensions</Product>
+    <Description>Some useful generic dynamic extensions to make your work with tree faster, cleaner and eraser</Description>
+    <Copyright>Iraq, Paradise Co. @2022</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
